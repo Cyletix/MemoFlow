@@ -50,9 +50,9 @@
 
 相比于手动管理笔记, 「MemoFlow」减少了繁琐的整理工作, 提高了笔记录入和筛选的效率。只需将代码复制到 Obsidian, 即可享受更智能的笔记管理体验！
 
-## **安装 & 使用方法**
+## **使用方法**
 
-### **1. 安装步骤**
+### **1. 单文件使用**
 
 1. **下载代码**：下载 `-MemoFlow-.md` 文件
 2. **粘贴代码**：复制到 Obsidian 中
@@ -60,12 +60,49 @@
 4. **开启dataviewjs**：安装dataview插件, 开启dataviewjs
 5. **保存 & 运行**：保存代码后即可使用。
 
-### **2. 快速开始**
+### 2. **在dataviewjs中引用js脚本**
+可以下载单独的JavaScript文件(MemoFlowTasksView.js), 在markdown文档中使用以下dataviewjs语句引用上述脚本, 自动查找路径. 
+```dataviewjs 
+dv.view("MemoFlowTasksView") ;
+```
+这个方法暂时只支持TasksView模块, MemoInput暂时不支持, 原因未知
+
+## **自定义YAML头文件参数说明**
+
+**「MemoFlow」的行为可以通过 YAML 头文件自定义，以下是所有可用参数及其作用：**
+
+| 参数名称             | 默认值                  | 作用说明 |
+|---------------------|----------------------|--------|
+| `DefaultToDiary`   | `true`（写入日记）       | 是否将笔记写入日记（`true`）或时间戳笔记（`false`） |
+| `DefaultAsTask`    | `false`（普通笔记）      | 选择记录的格式：`true` 为任务列表（☑️），`false` 为普通笔记（🔘） |
+| `PathToTimestamp`  | `data/timestamp`     | 记录时间戳笔记的存储路径 |
+| `PathToDiary`      | `Mindscape/Diary`    | 记录日记的存储路径，日记会自动归档到 `PathToDiary/{年份}/YYYY-MM-DD.md` |
+| `PosToDiaryList`   | `"想法"`               | 在日记中存放普通笔记的部分（默认是“想法”） |
+| `PosToDiaryTask`   | `"计划"`               | 在日记中存放任务列表的部分（默认是“计划”） |
+| `LimitNum`         | `64`                 | 笔记筛选的最大数量 |
+
+**示例 YAML 配置：**
+
+```yaml
+---
+DefaultToDiary: true      # 默认写入日记
+DefaultAsTask: false      # 记录为普通笔记（不是任务）
+PathToTimestamp: data/timestamp
+PathToDiary: Mindscape/Diary
+PosToDiaryList: 想法
+PosToDiaryTask: 计划
+LimitNum: 64
+---
+
+
+### **快速开始**
 
 - **录入笔记**：输入内容, 选择存储方式（日记或时间戳笔记）, 点击提交。
 - **筛选笔记**：使用任务、日记、闪念筛选按钮, 快速查看相关记录。
 
+
 ## **立即体验！**
 
 📌 **让你的 Obsidian 更智能、更高效！**
+
 
