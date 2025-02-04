@@ -51,7 +51,6 @@ const padding = 16; // 上下 padding 各 8px
 const minHeight = lineHeight + padding; // 最小高度 = 一行高度 + padding
 inputBox.style.minHeight = `${minHeight}px`;
 
-
 // 添加输入事件监听器，动态调整高度
 inputBox.addEventListener("input", () => {
     inputBox.style.height = "auto"; // 重置高度
@@ -94,15 +93,23 @@ async function handleButtonClick() {
 
             // 动态计算系统的时区偏移量
             const localTimezoneOffset = new Date().getTimezoneOffset(); // 分钟 
-            const timezoneOffset = -localTimezoneOffset * 60 * 1000;// 毫秒，且需反向调整符号
+            const timezoneOffset = -localTimezoneOffset * 60 * 1000; // 毫秒，且需反向调整符号
             // 获取当前时间，并通过时区偏移量调整为本地时间
             const now = new Date();
             const localTime = new Date(now.getTime() + timezoneOffset);
 
             // 获取本地日期部分
             const year = localTime.getFullYear();
-            const today = localTime.toISOString().slice(0, 10); // 这里的 localTime 已是调整后的时间
-            const journalFileName = `${PathToDiary}/${year}/${today}.md`;
+            const today = localTime.toISOString().slice(0, 10); // 格式：YYYY-MM-DD
+
+            // 先检查年份文件夹是否存在, 如不存在则创建
+            const yearFolder = `${PathToDiary}/${year}`;
+            let folder = app.vault.getAbstractFileByPath(yearFolder);
+            if (!folder) {
+                await app.vault.createFolder(yearFolder);
+            }
+
+            const journalFileName = `${yearFolder}/${today}.md`;
 
             let file = app.vault.getAbstractFileByPath(journalFileName);
 
@@ -205,7 +212,6 @@ const leftButtons = buttonContainer.createDiv({ cls: "left-buttons" });
 // 切换写入模式按钮
 const toggleWriteButton = leftButtons.createEl("button", { text: writeToDiary ? "📓写入日记" : "🕛时间戳笔记", cls: "toggle-write-button custom-button" });
 toggleWriteButton.style.width = "100px";
-//toggleWriteButton.style.backgroundColor = "transparent";
 toggleWriteButton.onclick = () => {
     writeToDiary = !writeToDiary;
     toggleWriteButton.textContent = writeToDiary ? "📓写入日记" : "🕛时间戳笔记";
@@ -214,7 +220,6 @@ toggleWriteButton.onclick = () => {
 // 切换列表类型按钮
 const toggleListButton = leftButtons.createEl("button", { text: isTaskList ? "☑️任务列表" : "🔘无序列表", cls: "toggle-list-button custom-button" });
 toggleListButton.style.width = "100px";
-//toggleListButton.style.backgroundColor = "transparent";
 toggleListButton.onclick = () => {
     isTaskList = !isTaskList;
     toggleListButton.textContent = isTaskList ? "☑️任务列表" : "🔘无序列表";

@@ -38,11 +38,17 @@ formContainer.style.flexDirection = "column";
 const inputBox = formContainer.createEl("textarea", { type: "text", rows: 3 });
 inputBox.style.width = "100%";
 inputBox.style.padding = "8px";
-inputBox.style.border = "1px solid #ccc";
+inputBox.style.border = "1px solid #8A5CF5";
 inputBox.style.resize = "vertical"; // 允许用户手动调整高度
 inputBox.placeholder = "写点什么好呢...";
 inputBox.style.backgroundColor = "transparent";
 //inputBox.style.color = "black";  // 字体颜色
+
+// 设置最小高度（至少一行的高度）
+const lineHeight = 20; // 假设一行的高度为 20px（根据实际字体大小调整）
+const padding = 16; // 上下 padding 各 8px
+const minHeight = lineHeight + padding; // 最小高度 = 一行高度 + padding
+inputBox.style.minHeight = `${minHeight}px`;
 
 // 添加输入事件监听器，动态调整高度
 inputBox.addEventListener("input", () => {
@@ -86,15 +92,23 @@ async function handleButtonClick() {
 
             // 动态计算系统的时区偏移量
             const localTimezoneOffset = new Date().getTimezoneOffset(); // 分钟 
-            const timezoneOffset = -localTimezoneOffset * 60 * 1000;// 毫秒，且需反向调整符号
+            const timezoneOffset = -localTimezoneOffset * 60 * 1000; // 毫秒，且需反向调整符号
             // 获取当前时间，并通过时区偏移量调整为本地时间
             const now = new Date();
             const localTime = new Date(now.getTime() + timezoneOffset);
 
             // 获取本地日期部分
             const year = localTime.getFullYear();
-            const today = localTime.toISOString().slice(0, 10); // 这里的 localTime 已是调整后的时间
-            const journalFileName = `${PathToDiary}/${year}/${today}.md`;
+            const today = localTime.toISOString().slice(0, 10); // 格式：YYYY-MM-DD
+
+            // 先检查年份文件夹是否存在, 如不存在则创建
+            const yearFolder = `${PathToDiary}/${year}`;
+            let folder = app.vault.getAbstractFileByPath(yearFolder);
+            if (!folder) {
+                await app.vault.createFolder(yearFolder);
+            }
+
+            const journalFileName = `${yearFolder}/${today}.md`;
 
             let file = app.vault.getAbstractFileByPath(journalFileName);
 
@@ -142,12 +156,18 @@ async function handleButtonClick() {
 // 5. 添加自定义 CSS 样式
 const style = document.createElement("style");
 style.innerHTML = `
+    .dv-container {
+    min-width: 400px; /* 这里可以调整最小宽度 */
+    }
     .custom-button {
-        background-color: #57a5ff !important;
-        color: black !important;
+        color: #000000 !important;
+        background-color: #8A5CF5 !important;
+        border: 1px solid #000000!important;
         padding: 5px 10px !important;
-        border: none !important;
         cursor: pointer !important;
+	    border-radius: 10px; /* 调整按钮圆角 */
+        flex-wrap: wrap; /* 允许换行 */
+        min-width: 60px; /* 最小宽度 */
     }
     .button-container {
         display: flex;
@@ -156,13 +176,28 @@ style.innerHTML = `
         justify-content: space-between;
         width: 100%;
         margin-top: 5px;
+        gap: 5px; /* 按钮间距 */
+        justify-content: space-between; /* 平均分配空间 */
     }
+
     .left-buttons, .right-button {
         display: flex;
         align-items: center;
     }
-    .left-buttons > button {
+    .left-buttons {
+        flex-wrap: wrap;
+    }
+    .left-buttons > .toggle-write-button {
         margin-right: 5px;
+    }
+    .left-buttons > .toggle-list-button {
+        margin-right: 5px;
+    }
+    .right-button {
+        margin-left: auto;
+        flex-shrink: 0; /* 防止按钮缩小 */
+        width: 100px; /* 固定宽度 */
+        align-items: right;
     }
 `;
 document.head.appendChild(style);
@@ -174,28 +209,25 @@ const buttonContainer = formContainer.createDiv({ cls: "button-container" });
 const leftButtons = buttonContainer.createDiv({ cls: "left-buttons" });
 
 // 切换写入模式按钮
-const toggleWriteButton = leftButtons.createEl("button", { text: writeToDiary ? "📓写入日记" : "🕛时间戳笔记", cls: "custom-button" });
+const toggleWriteButton = leftButtons.createEl("button", { text: writeToDiary ? "📓写入日记" : "🕛时间戳笔记", cls: "toggle-write-button custom-button" });
 toggleWriteButton.style.width = "100px";
-//toggleWriteButton.style.backgroundColor = "transparent";
 toggleWriteButton.onclick = () => {
     writeToDiary = !writeToDiary;
     toggleWriteButton.textContent = writeToDiary ? "📓写入日记" : "🕛时间戳笔记";
 };
 
 // 切换列表类型按钮
-const toggleListButton = leftButtons.createEl("button", { text: isTaskList ? "☑️任务列表" : "🔘无序列表", cls: "custom-button" });
+const toggleListButton = leftButtons.createEl("button", { text: isTaskList ? "☑️任务列表" : "🔘无序列表", cls: "toggle-list-button custom-button" });
 toggleListButton.style.width = "100px";
-//toggleListButton.style.backgroundColor = "transparent";
 toggleListButton.onclick = () => {
     isTaskList = !isTaskList;
     toggleListButton.textContent = isTaskList ? "☑️任务列表" : "🔘无序列表";
 };
 
-// 右侧按钮容器
-const rightButtonContainer = buttonContainer.createDiv({ cls: "right-button" });
-const mainButton = rightButtonContainer.createEl("button", { text: "Send", cls: "custom-button" });
-rightButtonContainer.style.backgroundColor = "transparent";
-mainButton.onclick = handleButtonClick;
+// 右侧发送按钮
+const sendButton = buttonContainer.createEl("button", { text: "发送", cls: "right-button custom-button" });
+sendButton.style.width = "60px";
+sendButton.onclick = handleButtonClick;
 
 // 7. 添加快捷键 Ctrl+Enter
 inputBox.addEventListener("keydown", (event) => {

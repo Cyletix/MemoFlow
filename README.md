@@ -54,7 +54,7 @@
 
 ### **1. 安装步骤**
 
-1. **下载代码**：下载 `MemoFlow.md` 文件
+1. **下载代码**：下载 `-MemoFlow-.md` 文件
 2. **粘贴代码**：复制到 Obsidian 中
 3. **设置路径**（可选）：根据需要修改 YAML 配置, 例如存储路径和日记插入位置等。
 4. **开启dataviewjs**：安装dataview插件, 开启dataviewjs
