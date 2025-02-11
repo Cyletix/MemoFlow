@@ -144,7 +144,7 @@ DefaultToDiary: false
 DefaultAsTask: false
 PathToTimestamp: data/timestamp
 PathToDiary: 日记/
-DateFormat: "YYYY-MM-DD-HH"
+DateFormat: "YYYYMMDDHH"
 PosToDiaryList: 想法
 PosToDiaryTask: 计划
 LimitNum: 128
