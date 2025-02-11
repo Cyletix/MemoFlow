@@ -229,3 +229,371 @@ inputBox.addEventListener("keydown", (event) => {
         handleButtonClick();
     }
 });
+```
+```dataviewjs
+// TasksView（笔记筛选模块）
+const activeFile = app.workspace.getActiveFile();
+async function getYamlProperty(prop) {
+    const metadata = await app.metadataCache.getFileCache(activeFile);
+    return (metadata && metadata.frontmatter && metadata.frontmatter[prop]) || null;
+}
+
+let writeToDiary    = await getYamlProperty("DefaultToDiary")   || false;
+let isTaskList      = await getYamlProperty("DefaultAsTask")    || false;
+let PathToTimestamp = await getYamlProperty("PathToTimestamp")  || "data/timestamp";
+let PathToDiary     = await getYamlProperty("PathToDiary")      || "Mindscape/Diary";
+let PosToDiaryList  = await getYamlProperty("PosToDiaryList")   || "想法";
+let PosToDiaryTask  = await getYamlProperty("PosToDiaryTask")   || "计划";
+let LimitNum        = parseInt(await getYamlProperty("LimitNum")) || 64;
+let DateFormat      = await getYamlProperty("DateFormat")       || "YYYY-MM-DD";
+
+// 归一化路径（去除尾部斜杠）
+function normalizePath(path) {
+    return path.replace(/\/+$/, "");
+}
+PathToDiary = normalizePath(PathToDiary);
+PathToTimestamp = normalizePath(PathToTimestamp);
+
+// 动态更新 YAML
+async function updateYamlProperty(property, value) {
+    const metadata = app.metadataCache.getFileCache(activeFile);
+    if (!metadata || !metadata.frontmatter) return;
+    const fileContent = await app.vault.read(activeFile);
+    const frontmatterEnd = fileContent.indexOf('---', 3);
+    if (frontmatterEnd === -1) return;
+    const frontmatterContent = fileContent.slice(0, frontmatterEnd + 3);
+    const bodyContent = fileContent.slice(frontmatterEnd + 3);
+    const updatedFrontmatter = frontmatterContent.replace(
+        new RegExp(`(^${property}:\\s*)(.+)$`, 'm'),
+        (_, p1) => `${p1}${value}`
+    );
+    const updatedContent = updatedFrontmatter + bodyContent;
+    await app.vault.modify(activeFile, updatedContent);
+}
+
+// ========== 2. 公用函数 ==========
+
+// 使用 moment 根据 DateFormat 严格解析文件名（去除扩展名）
+function parseFilenameToDate(filename) {
+    if (!filename || typeof filename !== "string") return null;
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
+    const m = moment(nameWithoutExt, DateFormat, true);
+    return m.isValid() ? m.toDate() : null;
+}
+
+const parsedDates = new Map();
+function getDate(filename) {
+    if (!parsedDates.has(filename)) {
+        parsedDates.set(filename, parseFilenameToDate(filename));
+    }
+    return parsedDates.get(filename);
+}
+
+function generateCalloutCard(title, content) {
+    return `> [!quote]+ [[${title}]]\n${content}`;
+}
+function generateTodoCard(filePath, calloutTitle) {
+    const fileName = dv.page(filePath).file.name;
+    return `> [!todo]${calloutTitle}[[${fileName}]]\n> \`\`\`dataview\n> task\n> from "${filePath}"\n> \`\`\``;
+}
+
+function removeYaml(content) {
+    const yamlRegex = /^---[\s\S]*?---\n/;
+    return content.replace(yamlRegex, '');
+}
+function findIdeaSection(content) {
+    const lines = content.split('\n');
+    const idx = lines.findIndex(line => line.trim().startsWith(`## ${PosToDiaryList}`));
+    if (idx === -1) return null;
+    const nextSectionIndex = lines.slice(idx+1).findIndex(line => line.trim().startsWith('## '));
+    return nextSectionIndex !== -1 ? lines.slice(idx+1, idx+1+nextSectionIndex) : lines.slice(idx+1);
+}
+function parseIdeaList(lines) {
+    const ideaItems = [];
+    const listRegex = /^\s*-\s*(?:(\d{1,2}:\d{2}(?::\d{2})?)\s+)?(.+?)$/;
+    for (const line of lines) {
+        const match = line.match(listRegex);
+        if (match && match[2] && match[2].trim() !== '') {
+            ideaItems.push({
+                time: match[1] || '',
+                content: match[2].trim()
+            });
+        }
+    }
+    return ideaItems;
+}
+
+// ========== 3. 筛选状态 ==========
+let showTasks      = true;
+let showNotes      = true;
+let showDiary      = true;
+let showTimestamp  = true;
+
+// ========== 4. 处理“时间戳”笔记 ==========
+async function processTimestampNotes(pathToTimestamp, entries) {
+    const pages = dv.pages(`"${PathToTimestamp}"`)
+        .filter(p => p && p.file && p.file.name)
+        .map(p => ({ ...p, date: getDate(p.file.name) }))
+        .filter(p => p.date)
+        .sort((a, b) => b.date - a.date);
+    
+    for (const page of pages) {
+        const date = page.date;
+        if (!date) continue;
+        const tasks = page.file.tasks.array();
+        let tags = [];
+        if (page.tags) {
+            tags = page.tags;
+        } else if (page.file.frontmatter && page.file.frontmatter.tag) {
+            tags = page.file.frontmatter.tag;
+            if (typeof tags === 'string') tags = [tags];
+        }
+        if (tasks.length > 0) {
+            const allCompleted = tasks.every(t => t.completed);
+            const calloutTitle = allCompleted ? '- ' : '+ ';
+            entries.push({
+                date,
+                content: generateTodoCard(page.file.path, calloutTitle),
+                tags,
+                type: 'task',
+                source: 'timestamp'
+            });
+        } else {
+            entries.push({
+                date,
+                content: generateCalloutCard(page.file.name, `![[${page.file.path}#]]`),
+                tags,
+                type: 'note',
+                source: 'timestamp'
+            });
+        }
+    }
+}
+
+// ========== 5. 处理“日记”笔记 ==========
+async function processDiaryNotes(pathToDiary, entries) {
+    // 直接读取用户指定的日记目录（MemoFlow2 日记文件直接存放在该目录下）
+    const pages = dv.pages(`"${PathToDiary}"`).filter(p => getDate(p.file.name));
+    const pageEntries = await Promise.all(pages.map(async (page) => {
+        const filePath = page.file.path;
+        const content = await dv.io.load(filePath);
+        const cleaned = removeYaml(content);
+        const ideaSection = findIdeaSection(cleaned);
+        let localEntries = [];
+        let tags = [];
+        if (page.tags) {
+            tags = page.tags;
+        } else if (page.file.frontmatter?.tag) {
+            tags = page.file.frontmatter.tag;
+            if (typeof tags === 'string') tags = [tags];
+        }
+        if (ideaSection) {
+            const ideaItems = parseIdeaList(ideaSection);
+            ideaItems.forEach(item => {
+                const fileName = page.file.name;
+                const date = getDate(fileName);
+                let timeParts = item.time ? item.time.split(':').map(Number) : [0];
+                while (timeParts.length < 3) { timeParts.push(0); }
+                const [h, m, s] = timeParts;
+                const dateTime = new Date(date);
+                dateTime.setHours(h || 0, m || 0, s || 0, 0);
+                localEntries.push({
+                    date: dateTime,
+                    content: item.time 
+                        ? `> [!quote]+ [[${fileName}]] ${item.time}\n> ${item.content}`
+                        : `> [!quote]+ [[${fileName}]]\n> ${item.content}`,
+                    tags,
+                    type: 'note',
+                    source: 'diary'
+                });
+            });
+        }
+        const planTasks = page.file.tasks
+            .where(t => t.section && t.section.subpath === PosToDiaryTask)
+            .array();
+        if (planTasks.length > 0) {
+            const allCompleted = planTasks.every(t => t.completed);
+            const calloutTitle = allCompleted ? '- ' : '+ ';
+            const date = getDate(page.file.name);
+            localEntries.push({
+                date,
+                content: generateTodoCard(filePath, calloutTitle),
+                tags,
+                type: 'task',
+                source: 'diary'
+            });
+        }
+        return localEntries;
+    }));
+    pageEntries.flat().forEach(e => entries.push(e));
+}
+
+// ========== 6. 显示函数 ==========
+function displayEntries(entries, limit) {
+    entries.sort((a, b) => b.date - a.date);
+    entries.slice(0, limit).forEach(e => {
+        dv.paragraph(e.content);
+    });
+}
+
+// ========== 7. 注入自适应CSS ==========
+const style = document.createElement("style");
+style.innerHTML = `
+.dv-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  justify-content: space-between;
+}
+.dv-button {
+  padding: 6px 12px;
+  color: black !important;
+  border: 1px solid #1A191E;
+  background-color: #8A5CF5 !important;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.dv-right-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.dv-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.dv-checkbox-wrapper {
+  display: flex;
+  align-items: center;
+}
+.dv-checkbox-wrapper input {
+  cursor: pointer;
+}
+.dv-checkbox-wrapper label {
+  margin-left: 4px;
+}
+.dv-filter-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 6px;
+  margin-top: 6px;
+}
+.dv-filter-hidden {
+  display: none !important;
+}
+.dv-filter-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+.dv-filter-tag {
+  flex-grow: 1;
+}
+.dv-filter-input {
+  border: 1px solid #1A191E;
+  background-color: transparent !important;
+  border-radius: 4px;
+  padding: 4px 6px;
+  min-width: 40px;
+}
+`;
+document.head.appendChild(style);
+
+// ========== 8. 创建 UI ==========
+const topRow = dv.container.createDiv({ cls: "dv-row-top" });
+
+const toggleBtn = topRow.createEl("button", { cls: "dv-button", text: "高级筛选" });
+
+const checkboxGroup = topRow.createDiv({ cls: "dv-checkbox-group" });
+function createCheckbox(labelText, defaultVal, onChange) {
+    const wrap = checkboxGroup.createDiv({ cls: "dv-checkbox-wrapper" });
+    const cb = wrap.createEl("input", { type: "checkbox" });
+    cb.checked = defaultVal;
+    cb.addEventListener("change", () => onChange(cb.checked));
+    const label = wrap.createEl("label");
+    label.textContent = labelText;
+}
+createCheckbox("任务", showTasks, val => { showTasks = val; refreshEntries(); });
+createCheckbox("列表", showNotes, val => { showNotes = val; refreshEntries(); });
+createCheckbox("日记", showDiary, val => { showDiary = val; refreshEntries(); });
+createCheckbox("闪念", showTimestamp, val => { showTimestamp = val; refreshEntries(); });
+
+const rightGroup = topRow.createDiv({ cls: "dv-right-group" });
+const limitNumInput = rightGroup.createEl("input", { type: "number", cls: "dv-filter-input", value: LimitNum.toString(), min: "1" });
+limitNumInput.title = "显示条目数量";
+limitNumInput.addEventListener("input", (e) => {
+    LimitNum = parseInt(e.target.value) || 1;
+});
+limitNumInput.addEventListener("blur", async () => {
+    LimitNum = parseInt(limitNumInput.value) || 1;
+    await updateYamlProperty("LimitNum", LimitNum);
+});
+limitNumInput.addEventListener("wheel", (e) => { e.preventDefault(); }, { passive: false });
+limitNumInput.style.width = "50px";
+
+const refreshBtn = rightGroup.createEl("button", { cls: "dv-button", text: "刷新" });
+refreshBtn.onclick = refreshEntries;
+refreshBtn.style.width = "60px";
+
+const filterFields = dv.container.createDiv({ cls: "dv-filter-fields dv-filter-hidden" });
+const filterInputs = filterFields.createDiv({ cls: "dv-filter-inputs" });
+const startDateInput = filterInputs.createEl("input", { type: "date", cls: "dv-filter-input" });
+startDateInput.title = "开始日期";
+const dashSpan = filterInputs.createEl("span", { text: "~" });
+dashSpan.style.lineHeight = "1.8em";
+const endDateInput = filterInputs.createEl("input", { type: "date", cls: "dv-filter-input" });
+endDateInput.title = "结束日期";
+const tagInput = filterInputs.createEl("input", { type: "text", cls: "dv-filter-input dv-filter-tag", placeholder: "tag1;tag2;..." });
+tagInput.title = "筛选标签";
+
+toggleBtn.onclick = () => {
+    filterFields.classList.toggle("dv-filter-hidden");
+};
+
+// ========== 9. 主流程 ==========
+async function refreshEntries() {
+    const realVal = parseInt(await getYamlProperty("LimitNum")) || LimitNum;
+    LimitNum = realVal;
+    limitNumInput.value = realVal.toString();
+    
+    while (dv.container.children.length > 2) {
+        dv.container.lastChild.remove();
+    }
+    
+    const startDate = startDateInput.value ? new Date(startDateInput.value) : null;
+    const endDate = endDateInput.value ? new Date(endDateInput.value) : null;
+    const tagFilter = tagInput.value.trim();
+    const tagsNeeded = tagFilter ? tagFilter.split(";").map(t => t.trim()) : null;
+    
+    const entries = [];
+    await Promise.all([
+         processTimestampNotes(PathToTimestamp, entries),
+         processDiaryNotes(PathToDiary, entries)
+    ]);
+    
+    const filtered = entries.filter(e => {
+        if (startDate && e.date < startDate) return false;
+        if (endDate && e.date > endDate) return false;
+        if (tagsNeeded) {
+            const hasAll = e.tags && tagsNeeded.every(t => e.tags.includes(t));
+            if (!hasAll) return false;
+        }
+        if (e.type === 'task' && !showTasks) return false;
+        if (e.type === 'note' && !showNotes) return false;
+        if (e.source === 'diary' && !showDiary) return false;
+        if (e.source === 'timestamp' && !showTimestamp) return false;
+        return true;
+    });
+    
+    displayEntries(filtered, LimitNum);
+}
+
+// 首次加载
+refreshEntries();
+```
