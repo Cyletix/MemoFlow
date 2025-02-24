@@ -108,7 +108,7 @@ dv.view("MemoFlowTasksView");
 
 ---
 
-## **自定义 YAML 头文件参数说明**
+## **自定义YAML frontmatter参数说明**
 
 **「MemoFlow」和「MemoFlow2」的行为可以通过 YAML 头文件自定义，以下是所有可用参数及其作用：**
 
@@ -121,7 +121,23 @@ dv.view("MemoFlowTasksView");
 | `PosToDiaryList`   | `"想法"`           | `"想法"`           | 在日记中存放普通笔记的部分 |
 | `PosToDiaryTask`   | `"计划"`           | `"计划"`           | 在日记中存放任务列表的部分 |
 | `DateFormat`       | `YYYY-MM-DD`（固定） | `YYYY-MM-DD`（可修改） | **仅 MemoFlow2**，自定义日记文件的日期格式 |
+| `DiaryFormat`      | 不适用              | `YYYY-MM-DD`（可修改） | **仅 MemoFlow2**，自定义日记文件的命名格式 |
+| `FlowFormat`       | 不适用              | `YYYY-MM-DD HHmmss`（可修改） | **仅 MemoFlow2**，自定义闪念笔记文件的命名格式 |
 | `LimitNum`         | `64`               | `128`              | 笔记筛选的最大数量 |
+
+### **示例 YAML 配置：**
+**MemoFlow（原版）**
+```yaml
+---
+DefaultToDiary: true
+DefaultAsTask: false
+PathToTimestamp: data/timestamp
+PathToDiary: Mindscape/Diary
+PosToDiaryList: 想法
+PosToDiaryTask: 计划
+LimitNum: 64
+---
+
 
 ### **示例 YAML 配置：**
 **MemoFlow（原版）**
@@ -142,11 +158,13 @@ LimitNum: 64
 ---
 DefaultToDiary: false
 DefaultAsTask: false
-PathToTimestamp: data/timestamp
+PathToTimestamp: data/timestamp/2025
 PathToDiary: 日记/
 DateFormat: "YYYYMMDDHH"
 PosToDiaryList: 想法
 PosToDiaryTask: 计划
+DiaryFormat: "YYYY-MM-DD"        # 日记命名格式（若失败则兜底 "YYYY-MM-DD"）
+FlowFormat: "YYYY-MM-DD HHmmss"  # 闪念命名格式（若失败则兜底 "YYYY-MM-DD HHmmss"）
 LimitNum: 128
 ---
 ```

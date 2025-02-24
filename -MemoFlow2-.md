@@ -1,7 +1,7 @@
 ---
 DefaultToDiary: false
 DefaultAsTask: false
-PathToTimestamp: data/timestamp
+PathToTimestamp: data/timestamp/2025
 PathToDiary: Mindscape/Diary
 PosToDiaryList: 想法
 PosToDiaryTask: 计划
