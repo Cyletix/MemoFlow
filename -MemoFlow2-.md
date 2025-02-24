@@ -5,9 +5,11 @@ PathToTimestamp: data/timestamp
 PathToDiary: Mindscape/Diary
 PosToDiaryList: 想法
 PosToDiaryTask: 计划
-DateFormat: "YYYY-MM-DD"
+DiaryFormat: "YYYY-MM-DD"        # 日记命名格式（若失败则兜底 "YYYY-MM-DD"）
+FlowFormat: "YYYY-MM-DD HHmmss"  # 闪念命名格式（若失败则兜底 "YYYY-MM-DD HHmmss"）
 LimitNum: 128
 ---
+```dataviewjs
 // 1. 获取当前文件
 const activeFile = app.workspace.getActiveFile();
 
@@ -17,7 +19,7 @@ async function getYamlProperty(property) {
     return metadata && metadata.frontmatter ? metadata.frontmatter[property] : null;
 }
 
-// 使用异步初始化变量
+// 使用异步初始化变量,  默认值均可自定义
 let writeToDiary    = await getYamlProperty("DefaultToDiary")   || false;
 let isTaskList      = await getYamlProperty("DefaultAsTask")    || false;
 let PathToTimestamp = await getYamlProperty("PathToTimestamp")  || "data/timestamp";
@@ -46,6 +48,7 @@ inputBox.placeholder = "写点什么好呢...";
 inputBox.style.backgroundColor = "transparent";
 //inputBox.style.color = "black";  // 字体颜色
 
+
 // 设置最小高度（至少一行的高度）
 const lineHeight = 20; // 假设一行的高度为 20px（根据实际字体大小调整）
 const padding = 16; // 上下 padding 各 8px
@@ -71,15 +74,28 @@ function generateTimestamp() {
 // 4. 主函数：从文本框获取内容并写入新文件或日记
 async function handleButtonClick() {
     const propertyValue = inputBox.value.trim();
+    const rawTags = tagInput.value.trim();         // 标签输入框
 
     if (propertyValue) {
         const now = new Date();
         const timeString = now.toTimeString().slice(0, 5); // HH:mm格式时间
         const timestamp = generateTimestamp(); // 生成时间戳
 
+        // 把标签按逗号或分号拆分，去空白
+        let tagList = [];
+        if (rawTags) {
+            tagList = rawTags.split(/[,;]/).map(t => t.trim()).filter(Boolean);
+        }
+
         if (!writeToDiary) {
             // 写入时间戳文件
-            const yamlHeader = `---\ntag: ${isTaskList ? "todo" : ""}\ndatetime: ${timestamp}\n---`;
+            // 输入tag
+            let yamlTagLines = "";
+            if (tagList.length > 0) {
+                yamlTagLines = tagList.map(t => `  - ${t}`).join("\n");
+            }
+            //构造YAML frontmatter
+            const yamlHeader = `---\ntags:\n${yamlTagLines}${isTaskList ? "  - todo" : ""}\ndatetime: ${timestamp}\n---`;
             const newFileName = `${PathToTimestamp}/${timestamp}.md`;
             
             const content = isTaskList
@@ -92,12 +108,9 @@ async function handleButtonClick() {
         } else {
             // 写入当天日记
 
-            // 动态计算系统的时区偏移量
-            const localTimezoneOffset = new Date().getTimezoneOffset(); // 分钟 
-            const timezoneOffset = -localTimezoneOffset * 60 * 1000; // 毫秒，且需反向调整符号
-            // 获取当前时间，并通过时区偏移量调整为本地时间
+            // 获取当前时间
             const now = new Date();
-            const localTime = new Date(now.getTime() + timezoneOffset);
+            const localTime = new Date(now.getTime());
 
             // 使用用户指定的 PathToDiary 作为存储日记的目录，日记名按照 DateFormat 格式化
             const diaryDate = moment(localTime).format(DateFormat);
@@ -196,31 +209,46 @@ style.innerHTML = `
 document.head.appendChild(style);
 
 // 6. 创建容器和按钮，并应用自定义样式
-const buttonContainer = formContainer.createDiv({ cls: "button-container" });
+const buttonRow = formContainer.createDiv();
+buttonRow.style.display = "flex";
+buttonRow.style.flexDirection = "row";
+buttonRow.style.alignItems = "center";
+buttonRow.style.gap = "6px";
+buttonRow.style.marginTop = "5px";
 
-// 左侧按钮容器
-const leftButtons = buttonContainer.createDiv({ cls: "left-buttons" });
+// 左侧按钮容器（避免使用已声明的 leftButtons，改用不同名称）
+const btnContainer = buttonRow.createDiv();
+btnContainer.style.display = "flex";
+btnContainer.style.gap = "6px";
 
 // 切换写入模式按钮
-const toggleWriteButton = leftButtons.createEl("button", { text: writeToDiary ? "📓写入日记" : "🕛时间戳笔记", cls: "toggle-write-button custom-button" });
-toggleWriteButton.style.width = "100px";
-toggleWriteButton.onclick = () => {
+const toggleWriteButtonNew = btnContainer.createEl("button", { text: writeToDiary ? "📓写入日记" : "🕛时间戳笔记", cls: "toggle-write-button custom-button" });
+toggleWriteButtonNew.style.width = "100px";
+toggleWriteButtonNew.onclick = () => {
     writeToDiary = !writeToDiary;
-    toggleWriteButton.textContent = writeToDiary ? "📓写入日记" : "🕛时间戳笔记";
+    toggleWriteButtonNew.textContent = writeToDiary ? "📓写入日记" : "🕛时间戳笔记";
 };
 
 // 切换列表类型按钮
-const toggleListButton = leftButtons.createEl("button", { text: isTaskList ? "☑️任务列表" : "🔘无序列表", cls: "toggle-list-button custom-button" });
-toggleListButton.style.width = "100px";
-toggleListButton.onclick = () => {
+const toggleListButtonNew = btnContainer.createEl("button", { text: isTaskList ? "☑️任务列表" : "🔘无序列表", cls: "toggle-list-button custom-button" });
+toggleListButtonNew.style.width = "100px";
+toggleListButtonNew.onclick = () => {
     isTaskList = !isTaskList;
-    toggleListButton.textContent = isTaskList ? "☑️任务列表" : "🔘无序列表";
+    toggleListButtonNew.textContent = isTaskList ? "☑️任务列表" : "🔘无序列表";
 };
 
+// 中间标签输入框（自动占满剩余空间）
+const tagInput = buttonRow.createEl("input", { type: "text" });
+tagInput.style.flexGrow = "1";
+tagInput.style.padding = "6px";
+tagInput.style.border = "1px solid #8A5CF5";
+tagInput.style.backgroundColor = "transparent";
+tagInput.placeholder = "tag1,tag2;tag3...";
+
 // 右侧发送按钮
-const sendButton = buttonContainer.createEl("button", { text: "发送", cls: "right-button custom-button" });
-sendButton.style.width = "60px";
-sendButton.onclick = handleButtonClick;
+const sendButtonNew = buttonRow.createEl("button", { text: "发送", cls: "custom-button" });
+sendButtonNew.style.width = "60px";
+sendButtonNew.onclick = handleButtonClick;
 
 // 7. 添加快捷键 Ctrl+Enter
 inputBox.addEventListener("keydown", (event) => {
@@ -238,6 +266,7 @@ async function getYamlProperty(prop) {
     return (metadata && metadata.frontmatter && metadata.frontmatter[prop]) || null;
 }
 
+// 从 frontmatter 读取各种配置, 支持自定义默认值
 let writeToDiary    = await getYamlProperty("DefaultToDiary")   || false;
 let isTaskList      = await getYamlProperty("DefaultAsTask")    || false;
 let PathToTimestamp = await getYamlProperty("PathToTimestamp")  || "data/timestamp";
@@ -245,7 +274,10 @@ let PathToDiary     = await getYamlProperty("PathToDiary")      || "Mindscape/Di
 let PosToDiaryList  = await getYamlProperty("PosToDiaryList")   || "想法";
 let PosToDiaryTask  = await getYamlProperty("PosToDiaryTask")   || "计划";
 let LimitNum        = parseInt(await getYamlProperty("LimitNum")) || 64;
-let DateFormat      = await getYamlProperty("DateFormat")       || "YYYY-MM-DD";
+
+// 新增的两个自定义属性，用来解析文件名
+let DiaryFormat     = await getYamlProperty("DiaryFormat")      || "YYYY-MM-DD";
+let FlowFormat      = await getYamlProperty("FlowFormat")       || "YYYY-MM-DD HHmmss";
 
 // 归一化路径（去除尾部斜杠）
 function normalizePath(path) {
@@ -254,7 +286,7 @@ function normalizePath(path) {
 PathToDiary = normalizePath(PathToDiary);
 PathToTimestamp = normalizePath(PathToTimestamp);
 
-// 动态更新 YAML
+// ------ 动态更新 YAML 函数（不变） ------
 async function updateYamlProperty(property, value) {
     const metadata = app.metadataCache.getFileCache(activeFile);
     if (!metadata || !metadata.frontmatter) return;
@@ -271,23 +303,33 @@ async function updateYamlProperty(property, value) {
     await app.vault.modify(activeFile, updatedContent);
 }
 
-// ========== 2. 公用函数 ==========
+// ========== 1. 两个解析函数（只改动这里） ==========
 
-// 使用 moment 根据 DateFormat 严格解析文件名（去除扩展名）
-function parseFilenameToDate(filename) {
-    if (!filename || typeof filename !== "string") return null;
+// 解析“日记”文件名 -> Date
+function parseDiaryFilenameToDate(filename, userFormat) {
     const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
-    const m = moment(nameWithoutExt, DateFormat, true);
+    // 先用用户在 frontmatter 里指定的格式去解析（严格模式）
+    let m = moment(nameWithoutExt, userFormat, true);
+    // 如果失败，再尝试一次最常见的 "YYYY-MM-DD" 作为兜底
+    if (!m.isValid()) {
+        m = moment(nameWithoutExt, "YYYY-MM-DD", true);
+    }
     return m.isValid() ? m.toDate() : null;
 }
 
-const parsedDates = new Map();
-function getDate(filename) {
-    if (!parsedDates.has(filename)) {
-        parsedDates.set(filename, parseFilenameToDate(filename));
+// 解析“闪念/时间戳”文件名 -> Date
+function parseFlowFilenameToDate(filename, userFormat) {
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
+    // 优先用 frontmatter 里指定的 FlowFormat
+    let m = moment(nameWithoutExt, userFormat, true);
+    // 若解析失败，则再尝试 "YYYY-MM-DD HHmmss" 兜底
+    if (!m.isValid()) {
+        m = moment(nameWithoutExt, "YYYY-MM-DD HHmmss", true);
     }
-    return parsedDates.get(filename);
+    return m.isValid() ? m.toDate() : null;
 }
+
+// ========== 2. 其余辅助函数（保持和原版一致） ==========
 
 function generateCalloutCard(title, content) {
     return `> [!quote]+ [[${title}]]\n${content}`;
@@ -306,7 +348,9 @@ function findIdeaSection(content) {
     const idx = lines.findIndex(line => line.trim().startsWith(`## ${PosToDiaryList}`));
     if (idx === -1) return null;
     const nextSectionIndex = lines.slice(idx+1).findIndex(line => line.trim().startsWith('## '));
-    return nextSectionIndex !== -1 ? lines.slice(idx+1, idx+1+nextSectionIndex) : lines.slice(idx+1);
+    return nextSectionIndex !== -1
+        ? lines.slice(idx+1, idx+1+nextSectionIndex)
+        : lines.slice(idx+1);
 }
 function parseIdeaList(lines) {
     const ideaItems = [];
@@ -324,23 +368,31 @@ function parseIdeaList(lines) {
 }
 
 // ========== 3. 筛选状态 ==========
+
 let showTasks      = true;
 let showNotes      = true;
 let showDiary      = true;
 let showTimestamp  = true;
 
 // ========== 4. 处理“时间戳”笔记 ==========
+
 async function processTimestampNotes(pathToTimestamp, entries) {
-    const pages = dv.pages(`"${PathToTimestamp}"`)
+    // 读取 pathToTimestamp 下所有文件，用 parseFlowFilenameToDate() 获得日期
+    const pages = dv.pages(`"${pathToTimestamp}"`)
         .filter(p => p && p.file && p.file.name)
-        .map(p => ({ ...p, date: getDate(p.file.name) }))
+        .map(p => {
+            const d = parseFlowFilenameToDate(p.file.name, FlowFormat);
+            return { ...p, date: d };
+        })
+        // 过滤掉无法解析出日期的文件
         .filter(p => p.date)
+        // 逆序排列(最新在前)
         .sort((a, b) => b.date - a.date);
     
     for (const page of pages) {
         const date = page.date;
-        if (!date) continue;
         const tasks = page.file.tasks.array();
+        // 尝试读取 tag
         let tags = [];
         if (page.tags) {
             tags = page.tags;
@@ -348,6 +400,7 @@ async function processTimestampNotes(pathToTimestamp, entries) {
             tags = page.file.frontmatter.tag;
             if (typeof tags === 'string') tags = [tags];
         }
+        // 有任务 => 生成 TODO 卡片
         if (tasks.length > 0) {
             const allCompleted = tasks.every(t => t.completed);
             const calloutTitle = allCompleted ? '- ' : '+ ';
@@ -359,6 +412,7 @@ async function processTimestampNotes(pathToTimestamp, entries) {
                 source: 'timestamp'
             });
         } else {
+            // 没有任务 => 普通笔记 Callout
             entries.push({
                 date,
                 content: generateCalloutCard(page.file.name, `![[${page.file.path}#]]`),
@@ -371,15 +425,22 @@ async function processTimestampNotes(pathToTimestamp, entries) {
 }
 
 // ========== 5. 处理“日记”笔记 ==========
+
 async function processDiaryNotes(pathToDiary, entries) {
-    // 直接读取用户指定的日记目录（MemoFlow2 日记文件直接存放在该目录下）
-    const pages = dv.pages(`"${PathToDiary}"`).filter(p => getDate(p.file.name));
+    // 读取 pathToDiary 下所有文件，用 parseDiaryFilenameToDate() 获得日期
+    const pages = dv.pages(`"${pathToDiary}"`);
     const pageEntries = await Promise.all(pages.map(async (page) => {
+        const date = parseDiaryFilenameToDate(page.file.name, DiaryFormat);
+        // 若解析不到日期，跳过
+        if (!date) return [];
+
         const filePath = page.file.path;
         const content = await dv.io.load(filePath);
         const cleaned = removeYaml(content);
         const ideaSection = findIdeaSection(cleaned);
+        
         let localEntries = [];
+        // 处理 tag
         let tags = [];
         if (page.tags) {
             tags = page.tags;
@@ -387,34 +448,38 @@ async function processDiaryNotes(pathToDiary, entries) {
             tags = page.file.frontmatter.tag;
             if (typeof tags === 'string') tags = [tags];
         }
+
+        // 1) “想法”部分 => note
         if (ideaSection) {
             const ideaItems = parseIdeaList(ideaSection);
             ideaItems.forEach(item => {
-                const fileName = page.file.name;
-                const date = getDate(fileName);
+                // 把日记日期 + (可能存在的 “HH:mm:ss”) 合并成一个完整时间
                 let timeParts = item.time ? item.time.split(':').map(Number) : [0];
                 while (timeParts.length < 3) { timeParts.push(0); }
                 const [h, m, s] = timeParts;
+
                 const dateTime = new Date(date);
                 dateTime.setHours(h || 0, m || 0, s || 0, 0);
+
                 localEntries.push({
                     date: dateTime,
                     content: item.time 
-                        ? `> [!quote]+ [[${fileName}]] ${item.time}\n> ${item.content}`
-                        : `> [!quote]+ [[${fileName}]]\n> ${item.content}`,
+                        ? `> [!quote]+ [[${page.file.name}]] ${item.time}\n> ${item.content}`
+                        : `> [!quote]+ [[${page.file.name}]]\n> ${item.content}`,
                     tags,
                     type: 'note',
                     source: 'diary'
                 });
             });
         }
+
+        // 2) “计划”部分 => task
         const planTasks = page.file.tasks
             .where(t => t.section && t.section.subpath === PosToDiaryTask)
             .array();
         if (planTasks.length > 0) {
             const allCompleted = planTasks.every(t => t.completed);
             const calloutTitle = allCompleted ? '- ' : '+ ';
-            const date = getDate(page.file.name);
             localEntries.push({
                 date,
                 content: generateTodoCard(filePath, calloutTitle),
@@ -423,12 +488,18 @@ async function processDiaryNotes(pathToDiary, entries) {
                 source: 'diary'
             });
         }
+
         return localEntries;
     }));
-    pageEntries.flat().forEach(e => entries.push(e));
+
+    // 扁平化合并
+    const all = pageEntries.flat();
+    // 按时间逆序（新的在前）
+    all.sort((a, b) => b.date - a.date);
+    all.forEach(e => entries.push(e));
 }
 
-// ========== 6. 显示函数 ==========
+// ========== 6. 显示函数 (不变) ==========
 function displayEntries(entries, limit) {
     entries.sort((a, b) => b.date - a.date);
     entries.slice(0, limit).forEach(e => {
@@ -436,7 +507,7 @@ function displayEntries(entries, limit) {
     });
 }
 
-// ========== 7. 注入自适应CSS ==========
+// ========== 7. 注入自适应CSS (不变) ==========
 const style = document.createElement("style");
 style.innerHTML = `
 .dv-row-top {
@@ -450,7 +521,7 @@ style.innerHTML = `
   padding: 6px 12px;
   color: black !important;
   border: 1px solid #1A191E;
-  background-color: #8A5CF5 !important;
+  background-color: #8A5CF5 !重要;
   border-radius: 10px;
   cursor: pointer;
 }
@@ -505,7 +576,7 @@ style.innerHTML = `
 `;
 document.head.appendChild(style);
 
-// ========== 8. 创建 UI ==========
+// ========== 8. 创建 UI (不变) ==========
 const topRow = dv.container.createDiv({ cls: "dv-row-top" });
 
 const toggleBtn = topRow.createEl("button", { cls: "dv-button", text: "高级筛选" });
@@ -557,11 +628,13 @@ toggleBtn.onclick = () => {
 };
 
 // ========== 9. 主流程 ==========
+
 async function refreshEntries() {
     const realVal = parseInt(await getYamlProperty("LimitNum")) || LimitNum;
     LimitNum = realVal;
     limitNumInput.value = realVal.toString();
     
+    // 清空旧内容(保留前面2行UI)
     while (dv.container.children.length > 2) {
         dv.container.lastChild.remove();
     }
@@ -569,14 +642,16 @@ async function refreshEntries() {
     const startDate = startDateInput.value ? new Date(startDateInput.value) : null;
     const endDate = endDateInput.value ? new Date(endDateInput.value) : null;
     const tagFilter = tagInput.value.trim();
-    const tagsNeeded = tagFilter ? tagFilter.split(";").map(t => t.trim()) : null;
+    const tagsNeeded = tagFilter ? tagFilter.split(/[,;]/).map(t => t.trim()).filter(Boolean) : null;
     
     const entries = [];
+    // 并行处理闪念 & 日记
     await Promise.all([
          processTimestampNotes(PathToTimestamp, entries),
          processDiaryNotes(PathToDiary, entries)
     ]);
     
+    // 最后做过滤与展示
     const filtered = entries.filter(e => {
         if (startDate && e.date < startDate) return false;
         if (endDate && e.date > endDate) return false;
