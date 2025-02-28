@@ -521,7 +521,7 @@ style.innerHTML = `
   padding: 6px 12px;
   color: black !important;
   border: 1px solid #1A191E;
-  background-color: #8A5CF5 !重要;
+  background-color: #8A5CF5 !important;
   border-radius: 10px;
   cursor: pointer;
 }
